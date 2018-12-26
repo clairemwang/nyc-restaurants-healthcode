@@ -1,0 +1,367 @@
+---
+title: "NYC Restaurant Data"
+author: "Claire Wang"
+date: "12/21/2018"
+output:
+  html_document:
+    df_print: paged
+---
+
+This challenge uses data from NYC's Open Archive. I used the NYC Restaurant Inspection dataset (https://data.cityofnewyork.us/Health/restaurant-data-set-2/f6tk-2b7a), which has information on restaurant health code violations in New York City. This challenge will explore the relationship (if any) between restaurant cuisine type and current health code grade. 
+
+
+# Read in Libraries and Files
+```{r setup}
+library(tidyverse)
+library(reshape)
+library(fastDummies)
+library(MASS)
+
+file_data <- 
+  "C:/Users/Claire/Downloads/DOHMH_New_York_City_Restaurant_Inspection_Results.csv"
+
+df_raw <- file_data %>% read_csv()
+```
+
+# Cleaning Data
+
+```{r}
+# Clean up dataset's variable names to remove spaces and make lowercase
+df <-
+  df_raw %>%
+  dplyr::rename_all(funs(make.names(.))) %>%
+  rename_all(tolower) 
+
+# Explore cuisine type labels
+df %>%
+  count(cuisine.description)
+```
+
+There are 85 different types of cuisines, which is far too many to plot. We will consolidate these cuisine types (e.g. combining "French", "German", "Portuguese" etc. into one large "Western European" category). I have created a new data frame below, called `df_cuisine_labels`, that shows how each cuisine description was categorized. 
+
+```{r}
+# Create new labels in a dataset called df_cuisine_labels
+df_cuisine_labels <- 
+  tribble(
+  ~orig_label, ~new_label,
+  "Middle Eastern", "Middle Eastern",
+  "Afghan",	"Middle Eastern",
+  "Armenian",	"Middle Eastern",
+  "Iranian",	"Middle Eastern",
+  "Moroccan",	"Middle Eastern",
+  "Egyptian",	"Middle Eastern",
+  "Turkish",	"Middle Eastern",
+  "South Asian", "South Asian",
+  "Pakistani", "South Asian",
+  "Indian", "South Asian",
+  "Bangladeshi", "South Asian",
+  "African", "African",
+  "Ethiopian", "African",
+  "Californian", "American",
+  "Tex-Mex", "American",
+  "Southwestern", "American",
+  "Continental", "American",
+  "Soul Food", "American",
+  "Chicken", "American",
+  "Barbecue", "American",
+  "American", "American",
+  "Thai", "Asian",
+  "Filipino", "Asian",
+  "Vietnamese/Cambodian/Malaysia", "Asian",
+  "Asian", "Asian",
+  "Indonesian", "Asian",
+  "Chinese", "Asian",
+  "Chinese/Cuban", "Asian",
+  "Chinese/Japanese", "Asian",
+  "Japanese", "Asian",
+  "Korean", "Asian",
+  "Australian",	"Australian",
+  "Bakery", "Bakery",
+  "Bagels/Pretzels",	"Bakery",
+  "CafÃ©/Coffee/Tea",	"Beverages",
+  "Bottled beverages, including water, sodas, juices, etc.",	"Beverages",
+  "Caribbean",	"Islands",
+  "Hawaiian",	"Islands",
+  "Polynesian",	"Islands",
+  "Creole/Cajun",	"Creole/Cajun",
+  "Creole",	"Creole/Cajun",
+  "Cajun",	"Creole/Cajun",
+  "Czech",	"Eastern European",
+  "Polish",	"Eastern European",
+  "Russian",	"Eastern European",
+  "Eastern European", "Eastern European",
+  "Portuguese",	"Western European",
+  "English",	"Western European",
+  "Scandinavian",	"Western European",
+  "Spanish",	"Western European",
+  "Tapas",	"Western European",
+  "Basque",	"Western European",
+  "French",	"Western European",
+  "German",	"Western European",
+  "Irish",	"Western European",
+  "Pizza/Italian",	"Western European",
+  "Italian",	"Western European",
+  "Pizza",	"Fast Food",
+  "Hamburgers", "Fast Food",
+  "Hotdogs", "Fast Food",
+  "Hotdogs/Pretzels", "Fast Food", 
+  "Fruits/Vegetables",	"Healthy Food",
+  "Vegetarian",	"Healthy Food",
+  "Juice, Smoothies, Fruit Salads", "Healthy Food",
+  "Pancakes/Waffles",	"Diner Food",
+  "Steak",	"Diner Food",
+  "Soups",	"Soups/Salads/Sandwiches",
+  "Soups & Sandwiches",	"Soups/Salads/Sandwiches",
+  "Salads",	"Soups/Salads/Sandwiches",
+  "Sandwiches/Salads/Mixed Buffet",	"Soups/Salads/Sandwiches",
+  "Sandwiches",	"Soups/Salads/Sandwiches",
+  "Delicatessen",	"Soups/Salads/Sandwiches",
+  "Seafood",	"Seafood",
+  "Ice Cream, Gelato, Yogurt, Ices",	"Desserts",
+  "Donuts",	"Desserts",
+  "Nuts/Confectionary",	"Desserts",
+  "Latin (Cuban, Dominican, Puerto Rican, South & Central American)",	"Latin",
+  "Peruvian", "Latin",
+  "Mexican", "Latin",
+  "Chilean", "Latin",
+  "Brazilian",  "Latin",
+  "Mediterranean",	"Mediterranean",
+  "Greek",	"Mediterranean",
+  "Jewish/Kosher",	"Mediterranean",
+  "Not Listed/Not Applicable",	"NA/Other",
+  "Other",	"NA/Other"
+)
+
+# Merge new labels into original dataset
+df_new <-
+  df %>%
+  left_join(df_cuisine_labels, by = c("cuisine.description" = "orig_label"))
+
+```
+
+# Exploring Current Grade by Cuisine Type
+
+```{r}
+# Manipulate data to calculate share of each grade, by cuisine type
+## Assumption: Focus only on observations with a current A/B/C grade
+df.1 <-
+  df_new %>%
+  filter(grade %in% c("A", "B", "C")) %>%
+  group_by(new_label, grade) %>% 
+  summarise(count = n()) %>%
+  mutate(perc = count / sum(count))
+
+# Plot data in stacked percent bar chart
+df.1 %>%
+  ggplot(mapping = aes(x = new_label, y = perc * 100, fill = grade)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(
+    aes(label = paste0(round(perc * 100, digits = 0),"%")), 
+    position = position_stack(vjust = 0.5), 
+    size = 2
+  ) +
+  labs(
+    title = "Current Grades by Cuisine Type",
+    y = "Percent",
+    x = "Cuisine Type",
+    fill = "Grade"
+  )
+```
+
+From this chart, we see of restaurants with a current grade, dessert type businesses have the highest share of 'A' grades, followed by beverage businesses (e.g. coffee and tea) and diner food (e.g. hamburgers, hot dogs).
+
+On the flip side, African cuisine type businesses and Creole/Cajun have the lowest shares of A grades, and Creole/Cajun has the highet share of C grades within their cusine type. 
+
+
+# Distribution of Violation Codes
+
+Now we will look at which health codes are most commonly violated. 
+
+```{r}
+df_new %>%
+  count(violation.code) %>%
+  arrange(-n)
+```
+
+Doing an initial count, we see that violation codes 10F, 08A, 04L, 06D, and 06C are the top violations. I looked up the description behind the top 10 code violations. 
+
+```{r}
+# Browse what the violation codes mean
+
+df_new %>%
+  filter(violation.code == "10F")
+```
+
+
+Further exploration of the dataset shows that:
+* 10F is non-food contact surface is improperly constructed.
+* 08A is the facility is not vermin-proof.
+* 04L is evidence of mice or live mice present.
+* 06D is food contact surface not properly washed, rinsed, and sanitized. 
+* 06C is food not protected from potential source of contamination. 
+* 02G is cold food item held above 41F.
+* 10B is plumbing improperly installed or maintained. 
+* 04N is filth flies or food/refuse/sewage-associated flies present.
+* 02B is hot food item not held at or above 140F.
+* 04H is raw, cooked, or prepared food is adulterated or contaminated. 
+
+Now we will plot the distribution of code violations. For visualization purposes, we will only plot the top 10 violations.
+
+```{r}
+# Create dataset
+## Includes counting each violation code, grabbing the top 10, 
+## and relabeling the numerical code with a description
+
+df.2 <-
+  df_new %>%
+  count(violation.code) %>%
+  arrange(-n) %>%
+  mutate(
+    violation.code = recode(
+      violation.code, 
+      `10F` = "10F: Improper non-food\ncontact surface", 
+      `08A` = "08A: Not vermin-proof",
+      `04L` = "04L: Mice present",
+      `06D` = "06D: Food surface\nimproperly cleaned",
+      `06C` = "06C: Potential food\ncontamination",
+      `02G` = "02G: Improper cold\nfood temperature",
+      `10B` = "10B: Improper plumbing",
+      `04N` = "04N: Flies present",
+      `02B` = "02B: Improper hot\nfood temperature",
+      `04H` = "04H: Contaminated food"
+    )
+  ) %>%
+  top_n(n = 10)
+
+# Plot data
+df.2 %>%
+  ggplot(
+    mapping = aes(
+      x = fct_reorder(violation.code, n, .desc = TRUE), 
+      y = n
+    )
+  ) +
+  geom_col(fill = "lightblue4") +
+  labs(
+    title = "Top 10 Health Code Violations",
+    x = "Health Code",
+    y = "Count"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) 
+```
+
+The most frequently violated health code is improper non-food contact surface, followed by failure to be vermin-proof or the presence of mice. 
+
+
+# Relationship between Cuisine Type and Restaurant Grade
+Now we are interested in exploring if there is a statistically significant relationship between type of cuisine and restaurant grade. To test this, we will perform an ordinal logistic regression.
+
+```{r}
+# Focus only on observations with a current grade
+df_filtered <- df_new %>% filter(grade %in% c("A", "B", "C"))
+```
+
+## Selecting a Model
+Our outcome variable, grade, has three levels: "A", "B", and "C". The test we will use to assess significance between cuisine type and grade is an _ordinal logistic regression_. In this regression, we will specify `HESS = TRUE` so that the model returns the observed information matrix from optimization, which we will use to obtain standard errors. 
+
+In order to run an ordinal logistic regression, we will drop some variables that are likely extraneous (e.g. camis, building) or have too many unique values (e.g. zipcode). We will call this pared down dataset `df.3`. 
+
+```{r}
+# Pare down data
+df.3 <-
+  df_filtered %>%
+  drop_na() %>%
+  dplyr::select(
+    -c(
+      camis, dba, building, street, phone, cuisine.description, 
+      inspection.date, action, violation.description, grade.date, 
+      record.date, inspection.type, zipcode, violation.code
+      )
+  ) %>%
+  mutate(
+    grade = as.factor(ifelse(grade == "A", 3, ifelse(grade == "B", 2, 1)))
+  )
+
+
+# Fit ordinal logistic model
+fit.logit <- polr(grade ~ ., data = df.3, Hess = TRUE)
+
+# Print summary of results
+summary(fit.logit)
+```
+
+By default, the ordinal logistic regression summary has no significance test (p-value). We do see the t-statistic, which is the coefficient divided by the standard error, so we will use this t-statistic to construct a p-value by comparing the t-stat against the standard normal distribution. This is a reasonable approximation as we have a large number of observations.
+
+```{r}
+# Store coefficients in a table
+coef_table <- coef(summary(fit.logit))
+
+# Calculate p-values
+p <- round(pnorm(abs(coef_table[ , "t value"]), lower.tail = FALSE) * 2, 3)
+
+# Combine into one table
+table <- cbind(coef_table, "p value" = p)
+
+table
+```
+
+## Bonferroni Correction for Multiple Hypothesis Testing
+
+We conducted many hypothesis tests at once since we had so many cuisine types. To adjust for this and to decrease our chance of incorrectly rejecting the null hypothesis, I will do a Bonferroni correction. This correction poses a stricter p-value requirement that depends on the number of tests we did. Here, we did 27 tests, so in order for a coefficient to be considered statistically significant at the 5% level, it must have a p-value less than 0.05 / 27 = 0.00185.
+
+```{r}
+# Add in Bonferroni-adjusted p-value
+complete_table <- cbind(table, "adj p value" = 0.00185)
+
+complete_table
+```
+
+We see in the adjusted table that all of the boroughs are significant, as well as the following cuisine types:
+
+* American
+* Asian
+* Beverages
+* Desserts
+* Diner Food
+* Fast Food
+* Mediterranean
+* Seafood
+* Soups/Salads/Sandwiches
+* Western European
+
+In other words, there is a statistically significant relationship between type of cuisine and restaurant grade, depending on the cuisine type. 
+
+# Interpreting Results
+
+The resulting coefficients are proportional odds ratios. As an example of how to interpret them, we see that an “American” cuisine label has an estimated coefficient of -0.69239009. We would thus say that if a restaurant serves American cuisine, the odds of it having a grade “A” versus a “B” or “C” are 0.69 lower, given that all other variables are constant. So American restaurants are associated with lower grades. All of the statistically significant cuisine types in the list above had negative coefficients, so these cuisines are associated with lower odds of having a grade A.
+
+The model also created cutpoints for “A” and “B” scores, as well as “B” and “C” scores. These estimates suggest where the variable was cut to make the three grade classes observed in the data. However, these should be used more as thresholds and should not be used for interpretation or inference purposes.
+
+# Recommendations
+
+Based on the data, to help the DOHMH prioritize inspections, I suggest that restaurants with the categories above are deprioritized in their visits. These restaurant types are more likely to have higher grades and, by definition, fewer violations. Combining the exploratory data analysis done in Question 1, I would recommend that the DOHMH prioritize African, Creole/Cajun, and South Asian restaurants in their inspections.  
+
+Aside from prioritizing certain types of restaurants, the DOHMH could also proactively address the most common types of violations. It’s likely that different types of restaurants commit different types of violations. For example, I imagine an Indian restaurant would commit different health code violations than a candy store (see below):
+
+
+```{r}
+# Violations by Cuisine Type
+df_filtered %>%
+  filter(new_label == "South Asian") %>%
+  count(violation.code) %>%
+  arrange(-n) %>%
+  top_n(n = 5)
+
+
+df_filtered %>%
+  filter(new_label == "Desserts") %>%
+  count(violation.code) %>%
+  arrange(-n) %>%
+  top_n(n = 5)
+```
+
+One action the department can take is to create pamphlets for each cuisine type that lists the top 5 most commonly violated health codes for that restaurant category. The department can then distribute these pamphlets to each restaurant in New York City.  
+
